@@ -1,4 +1,5 @@
--- Run this once in the Supabase SQL editor.
+-- Applied automatically by `npm run init-db` (Railway/any Postgres).
+-- Or paste into a SQL console (Supabase, psql, etc.) to run it by hand.
 
 -- ============================================================
 -- posts: one row per generated post set

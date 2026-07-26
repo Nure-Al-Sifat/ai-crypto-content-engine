@@ -62,8 +62,13 @@ jobs:
           GITHUB_REPOS: ${{ vars.GITHUB_REPOS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Storage: Railway Postgres. Add DATABASE_URL as a repo secret
+          # (use the PUBLIC connection string). See README "Storage".
+          STORAGE: postgres
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # To use Supabase instead, set STORAGE=supabase and provide these two:
+          # SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          # SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

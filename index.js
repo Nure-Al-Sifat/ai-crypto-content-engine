@@ -11,7 +11,7 @@ import {
   savePost,
   recordTopics,
   getPostsAwaitingMetrics,
-} from "./db/supabase.js";
+} from "./db/store.js";
 import {
   sendPostForReview,
   sendPhoto,

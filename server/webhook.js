@@ -5,7 +5,7 @@ import {
   updatePostStatus,
   setChosenVariant,
   recordEngagement,
-} from "../db/supabase.js";
+} from "../db/store.js";
 import {
   answerCallback,
   editPostMessage,

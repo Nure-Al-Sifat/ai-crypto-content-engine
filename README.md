@@ -90,8 +90,16 @@ npm install
 cp .env.example .env
 ```
 
-### 2. Database
-Create a free Supabase project, then run `db/sql/schema.sql` in the SQL editor. Copy the project URL and `service_role` key into `.env`.
+### 2. Storage — Railway Postgres (default)
+Posts and topic memory live in a Postgres database. The app talks to it directly with `pg` and the schema in [db/sql/schema.sql](db/sql/schema.sql).
+
+1. In [railway.app](https://railway.app): **New Project → add PostgreSQL**.
+2. Open the database → **Variables** tab → copy the **public** connection string into `DATABASE_URL` in `.env` (the public host ends in `.rlwy.net`; SSL is enabled automatically for it).
+3. Run `npm run init-db` once — it applies the schema and creates the `posts` and `covered_topics` tables.
+
+Any Postgres works (Neon, Render, local `postgres://localhost/…`); only `DATABASE_URL` matters. For a local DB, SSL is auto-disabled.
+
+Prefer Supabase's REST client instead? Set `STORAGE=supabase`, fill `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`, and run the same schema in its SQL editor. The app code is identical either way — see [db/store.js](db/store.js).
 
 ### 3. AI provider
 Fill in at least one. The chain skips any provider whose key is missing.
@@ -128,7 +136,9 @@ npm run force   # re-run over today's existing post
 
 The buttons need a public endpoint to receive callbacks. Two options:
 
-**Cloudflare Workers (recommended — free, always warm)**
+> **On Railway Postgres, use the local Node server below.** The Cloudflare Worker talks to Supabase's REST API and can't open a raw Postgres connection, so it only applies when `STORAGE=supabase`.
+
+**Cloudflare Workers (Supabase only — free, always warm)**
 ```bash
 npm i -g wrangler
 wrangler deploy server/worker.js --name content-engine-hook --compatibility-date 2026-01-01
@@ -154,7 +164,7 @@ Without a webhook the engine still works — you just lose the buttons and mark 
 
 Push to GitHub. `.github/workflows/daily-content.yml` runs daily at 12:00 UTC (6 PM Bangladesh). Add these repo secrets:
 
-`GEMINI_API_KEY`, `GROQ_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `NEYNAR_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+`GEMINI_API_KEY`, `GROQ_API_KEY`, `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `NEYNAR_API_KEY`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 
 And these repo *variables*: `GITHUB_REPOS`, `X_HANDLE`.
 
