@@ -1,0 +1,75 @@
+name: Daily Content Generation
+
+on:
+  schedule:
+    # 12:00 UTC = 6:00 PM Bangladesh (UTC+6).
+    # Posting in the BD evening reaches US Crypto Twitter as it wakes up.
+    - cron: "0 12 * * *"
+
+  workflow_dispatch:
+    inputs:
+      pillar:
+        description: "Override today's pillar (optional)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - founder_story
+          - market_insight
+          - technical_explainer
+          - build_log
+          - ecosystem_commentary
+      force:
+        description: "Re-run even if today already has a post"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Generate today's content
+        run: node index.js
+        env:
+          # Ollama is dropped from the chain here — GitHub runners have no
+          # local Ollama server. Gemini and Groq both work from CI.
+          AI_PROVIDERS: gemini,groq
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-2.0-flash
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: ai-crypto-content-engine/1.0
+          REDDIT_SUBREDDITS: CryptoCurrency,ethtrader,web3,gamedev,esports
+
+          NEYNAR_API_KEY: ${{ secrets.NEYNAR_API_KEY }}
+          FARCASTER_CHANNELS: gaming,base,ethereum
+          HN_QUERIES: "web3 gaming,crypto payments,esports,state channels"
+
+          GITHUB_REPOS: ${{ vars.GITHUB_REPOS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+          CONTENT_FOCUS: "Web3 gaming, esports monetization, streamer micropayments, GameReq founder perspective"
+          X_HANDLE: ${{ vars.X_HANDLE }}
+          VARIANT_COUNT: "3"
+          PILLAR_OVERRIDE: ${{ inputs.pillar }}
+          FORCE_RERUN: ${{ inputs.force }}
