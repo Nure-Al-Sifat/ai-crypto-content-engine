@@ -18,9 +18,10 @@ export async function callStructured({ system, user, schema, maxAttempts = 3 }) 
       return { data, provider };
     } catch (err) {
       lastError = err;
-      console.warn(`[ai] attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
 
-      // Feed the failure back so the next attempt corrects it
+      // Self-correcting retry: feed the error back so the model fixes it. This
+      // is normal and recovers silently — we only surface it if every attempt
+      // is exhausted (below), so a healed retry doesn't look like a failure.
       currentUser = `${user}
 
 IMPORTANT: your previous response was rejected with this error:
@@ -28,7 +29,7 @@ IMPORTANT: your previous response was rejected with this error:
 Return ONLY valid JSON matching the requested schema exactly. No markdown fences, no prose.`;
 
       if (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+        await new Promise((r) => setTimeout(r, 600 * attempt));
       }
     }
   }

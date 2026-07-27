@@ -11,6 +11,9 @@ import fetch from "node-fetch";
 
 const TIMEOUT_MS = 60_000;
 
+// Keep provider errors to one readable line instead of dumping the whole body.
+const brief = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 160);
+
 async function withTimeout(promise, ms = TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -45,7 +48,7 @@ async function callGemini({ system, user }) {
     })
   );
 
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${brief(await res.text())}`);
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Gemini returned empty content (quota or safety filter)");
@@ -77,7 +80,7 @@ async function callGroq({ system, user }) {
     })
   );
 
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Groq ${res.status}: ${brief(await res.text())}`);
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new Error("Groq returned empty content");
@@ -108,7 +111,7 @@ async function callOllama({ system, user }) {
     120_000 // local models on modest hardware are slower
   );
 
-  if (!res.ok) throw new Error(`Ollama ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Ollama ${res.status}: ${brief(await res.text())}`);
   const data = await res.json();
   const text = data.message?.content;
   if (!text) throw new Error("Ollama returned empty content");

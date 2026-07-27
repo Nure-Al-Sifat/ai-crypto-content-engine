@@ -1,138 +1,138 @@
 import "dotenv/config";
 import { getPillarForDate, getPillarByKey } from "./config/pillars.js";
 import { collectTrends } from "./fetchers/index.js";
+import { judgeVirality } from "./ai/viral.js";
 import { generateContent } from "./ai/generate.js";
-import { generateCard } from "./image/card.js";
 import {
   todayKey,
   hasRunToday,
   getRecentTopics,
-  getTopPerformingExamples,
+  recordTopic,
   savePost,
-  recordTopics,
-  getPostsAwaitingMetrics,
-} from "./db/store.js";
-import {
-  sendPostForReview,
-  sendPhoto,
-  sendMessage,
-} from "./notify/telegram.js";
+} from "./db/excel.js";
 
 const args = process.argv.slice(2);
 const FORCE = args.includes("--force") || process.env.FORCE_RERUN === "true";
 const PILLAR_OVERRIDE =
   args.find((a) => a.startsWith("--pillar="))?.split("=")[1] || process.env.PILLAR_OVERRIDE;
 
+const sig = (t = "") =>
+  t.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 3);
+
+/** The few other headlines most related to the topic, for research context. */
+function findRelated(topic, trends, n = 3) {
+  const words = new Set(sig(topic.title));
+  return trends
+    .filter((t) => t.title && t.title !== topic.title)
+    .map((t) => ({ t, overlap: sig(t.title).filter((w) => words.has(w)).length }))
+    .filter((x) => x.overlap > 0)
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, n)
+    .map((x) => x.t);
+}
+
+function printSummary(topic, viral, content, id) {
+  const outline = (content.youtube_outline || "")
+    .split("\n")
+    .map((l) => `     ${l}`)
+    .join("\n");
+  console.log(`
+════════════════════════════════════════════════════════════
+🔥 TOPIC: ${topic.title}${viral.score != null ? `  (viral ${viral.score}/100)` : ""}
+   Why:  ${viral.why}
+   Saved to Excel as row #${id} — post from there.
+────────────────────────────────────────────────────────────
+🐦 X:
+${content.x_post}
+
+💼 LINKEDIN:
+${content.linkedin_post}
+
+▶️  YOUTUBE:
+   Title: ${content.youtube_title}
+   Hook:  ${content.youtube_hook}
+   Outline:
+${outline}
+
+📘 FACEBOOK:
+${content.facebook_post}
+
+#  ${(content.hashtags || []).join(" ")}
+════════════════════════════════════════════════════════════`);
+}
+
 async function run() {
   const runDate = todayKey();
 
-  // ---- 1. Idempotency -------------------------------------------------
+  // 1. Idempotency — one post set per day unless forced.
   const existing = await hasRunToday(runDate);
   if (existing && !FORCE) {
-    console.log(`[engine] Already ran today (post #${existing.id}, ${existing.status}). Use --force to override.`);
-    return;
-  }
-  if (existing && FORCE) {
-    console.log(`[engine] Forcing re-run over post #${existing.id}`);
-  }
-
-  // ---- 2. Pillar for today -------------------------------------------
-  const pillar = PILLAR_OVERRIDE
-    ? getPillarByKey(PILLAR_OVERRIDE)
-    : getPillarForDate();
-  console.log(`[engine] Pillar: ${pillar.label} (needs: ${pillar.needs.join(", ") || "none"})`);
-
-  // ---- 3. Load memory + learned voice in parallel ---------------------
-  const [recentTopics, voiceExamples] = await Promise.all([
-    getRecentTopics(14).catch(() => []),
-    getTopPerformingExamples(8).catch(() => []),
-  ]);
-
-  // ---- 4. Fetch only what this pillar needs ---------------------------
-  const trends = pillar.needs.length
-    ? await collectTrends({ needs: pillar.needs })
-    : [];
-
-  if (pillar.needs.length && !trends.length) {
-    await sendMessage(
-      `⚠️ Engine ran for ${pillar.label} but found zero usable items after filtering. Check feeds and keyword weights.`
+    console.log(
+      `[engine] Already ran today (row #${existing.id}, ${existing.status}). Use --force to override.`
     );
     return;
   }
 
-  // ---- 5. Generate (curate -> write -> critique) ----------------------
+  // 2. Pillar for today.
+  const pillar = PILLAR_OVERRIDE ? getPillarByKey(PILLAR_OVERRIDE) : getPillarForDate();
+  console.log(`[engine] Pillar: ${pillar.label} (needs: ${pillar.needs.join(", ") || "none"})`);
+
+  const recentTopics = await getRecentTopics(14).catch(() => []);
   const focus =
     process.env.CONTENT_FOCUS ||
     "Web3 gaming, esports monetization, streamer micropayments";
 
-  const result = await generateContent({
-    trends,
-    pillar,
-    focus,
-    voiceExamples,
-    recentTopics,
-    variantCount: Number(process.env.VARIANT_COUNT || 3),
-  });
+  // 3. Choose the topic.
+  let topic;
+  let related = [];
+  let viral = { score: null, why: "" };
 
-  // ---- 6. Persist -----------------------------------------------------
-  const saved = await savePost({
+  if (pillar.needs.length) {
+    const trends = await collectTrends({ needs: pillar.needs });
+    if (!trends.length) {
+      console.log(`[engine] No usable items for ${pillar.label} after filtering. Nothing saved.`);
+      return;
+    }
+
+    const ranked = await judgeVirality({ trends, focus, pillar, recentTopics });
+    topic = ranked[0];
+    related = findRelated(topic, trends, 3);
+    viral = { score: topic.viral_score, why: topic.why };
+
+    console.log(`\n🔥 BEST TOPIC — ${topic.viral_score}/100: ${topic.title}`);
+    ranked
+      .slice(1, 3)
+      .forEach((r) => console.log(`   runner-up (${r.viral_score}/100): ${r.title.slice(0, 60)}`));
+  } else {
+    // Pillars like founder_story run on voice + context, no external trend.
+    topic = {
+      source: "internal",
+      title: `${pillar.label} — founder perspective`,
+      angle_seed: pillar.angle,
+      link: null,
+    };
+    viral = { score: null, why: "No external trend — voice/context pillar" };
+  }
+
+  // 4. Research + write per-platform drafts.
+  const { content } = await generateContent({ topic, pillar, focus, related });
+
+  // 5. Save one clean row + remember the topic for dedupe.
+  const { id } = await savePost({
     runDate,
     pillar: pillar.key,
-    variants: result.variants,
-    sources: result.sources,
-    critique: { problems: result.critique_problems },
+    topic: topic.title,
+    sourceLink: topic.link,
+    viral,
+    content,
   });
-  await recordTopics(saved.id, result.sources);
-  console.log(`[engine] Saved post #${saved.id}`);
+  await recordTopic(topic.title);
 
-  // ---- 7. Branded card (non-fatal if it fails) ------------------------
-  try {
-    const png = await generateCard({
-      hook: result.variants[0].hook,
-      pillar: pillar.label,
-      handle: process.env.X_HANDLE || "@yourhandle",
-    });
-    await sendPhoto(png, `${pillar.label} — card for post #${saved.id}`);
-  } catch (err) {
-    console.warn(`[engine] Card generation skipped: ${err.message}`);
-  }
-
-  // ---- 8. Send for review --------------------------------------------
-  const warnings = [];
-  if (result.critique_problems.length) {
-    warnings.push(`Editor flagged: ${result.critique_problems.join("; ")}`);
-  }
-  if (result.variants.some((v) => v.length_warning)) {
-    warnings.push("A variant was auto-trimmed to fit 280 chars");
-  }
-
-  await sendPostForReview({
-    postId: saved.id,
-    variants: result.variants,
-    variantIndex: 0,
-    pillar: pillar.label,
-    sources: result.sources,
-    warnings,
-  });
-
-  // ---- 9. Nudge for engagement data (closes the feedback loop) --------
-  const awaiting = await getPostsAwaitingMetrics();
-  if (awaiting.length) {
-    const list = awaiting.map((p) => `#${p.id} (${p.pillar})`).join(", ");
-    await sendMessage(
-      `📊 Waiting on metrics for: ${list}\nReply /metrics <id> <impressions> <likes> <reposts> <replies>`
-    );
-  }
-
+  printSummary(topic, viral, content, id);
   console.log("[engine] Done.");
 }
 
-run().catch(async (err) => {
-  console.error("[engine] Fatal:", err);
-  try {
-    await sendMessage(`🚨 Content engine failed: ${err.message}`);
-  } catch {
-    /* notification is best-effort */
-  }
+run().catch((err) => {
+  console.error("[engine] Fatal:", err.message);
   process.exit(1);
 });

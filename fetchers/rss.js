@@ -6,7 +6,7 @@ const parser = new Parser({ timeout: 10000 });
 const FEEDS = [
   { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/" },
   { name: "Decrypt", url: "https://decrypt.co/feed" },
-  { name: "The Block", url: "https://www.theblock.co/rss.xml" },
+  { name: "Cointelegraph", url: "https://cointelegraph.com/rss" },
 ];
 
 /**

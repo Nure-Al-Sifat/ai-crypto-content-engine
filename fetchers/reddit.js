@@ -39,7 +39,7 @@ async function getAccessToken() {
 /**
  * Pulls top "hot" posts from each configured subreddit.
  */
-export async function fetchRedditTrends(postsPerSub = 5) {
+export async function fetchRedditTrends(postsPerSub = 8) {
   const subs = (process.env.REDDIT_SUBREDDITS || "CryptoCurrency")
     .split(",")
     .map((s) => s.trim())
@@ -69,6 +69,11 @@ export async function fetchRedditTrends(postsPerSub = 5) {
           title: p.data.title,
           link: `https://reddit.com${p.data.permalink}`,
           upvotes: p.data.ups,
+          comments: p.data.num_comments,
+          // created_utc drives the velocity (upvotes-per-hour) signal
+          publishedAt: p.data.created_utc
+            ? new Date(p.data.created_utc * 1000).toISOString()
+            : null,
         }));
 
       results.push(...posts);

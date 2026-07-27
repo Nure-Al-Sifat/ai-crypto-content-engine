@@ -3,41 +3,46 @@ import { z } from "zod";
 /**
  * LLMs return malformed JSON often enough that unvalidated parsing will
  * eventually crash a scheduled run at 6am with no one watching.
- * Validate the shape, fail loudly, retry.
+ * Validate the shape, fail loudly, and let call.js retry.
  */
 
-export const CurationSchema = z.object({
-  selected: z
+// Stage 3 — the virality judge ranks candidates by viral potential.
+export const ViralSchema = z.object({
+  ranked: z
     .array(
       z.object({
         index: z.number().int().min(0),
-        relevance: z.number().min(0).max(10),
-        reason: z.string().min(1),
+        viral_score: z.number().min(0).max(100),
+        why: z.string().min(1),
+        angle: z.string().min(1),
+        risk: z.string().optional().default(""),
       })
     )
-    .min(1)
-    .max(3),
-  discard_reason: z.string().optional(),
+    .min(1),
 });
 
-export const PostVariantSchema = z.object({
-  angle: z.string().min(1),
-  x_post: z.string().min(1).max(400), // hard-trimmed to 280 later
-  x_thread: z.array(z.string()).optional().default([]),
+// Stage 4 — research grounds the chosen topic in real facts.
+export const ResearchSchema = z.object({
+  summary: z.string().min(1),
+  key_facts: z.array(z.string()).default([]),
+  quotes: z.array(z.string()).default([]),
+  why_it_matters: z.string().min(1),
+  sharp_angle: z.string().min(1),
+  contrarian_take: z.string().optional().default(""),
+});
+
+// Stage 5 — one ready-to-post draft per platform.
+// Deliberately FLAT (no nested objects/arrays except hashtags): flat JSON is
+// far more reliable for LLM json-mode than nested structures.
+export const PlatformContentSchema = z.object({
+  hook: z.string().min(1), // one arresting line (also the summary)
+  x_post: z.string().min(1), // hard-trimmed to 280 later
   linkedin_post: z.string().min(1),
-  hashtags: z.array(z.string()).max(6).default([]),
-  hook: z.string().min(1), // the single line used on the quote card
-});
-
-export const WriteSchema = z.object({
-  variants: z.array(PostVariantSchema).min(1).max(3),
-  source_used: z.string().min(1),
-});
-
-export const CritiqueSchema = z.object({
-  verdict: z.enum(["ship", "revise"]),
-  problems: z.array(z.string()).default([]),
-  revised: PostVariantSchema.nullable().optional(),
+  youtube_title: z.string().min(1),
+  youtube_hook: z.string().min(1), // spoken opening, first ~10 seconds
+  youtube_outline: z.string().min(1), // beats, one per line ("- ...")
+  facebook_post: z.string().min(1),
+  hashtags: z.array(z.string()).max(8).default([]),
 });
 
 /**

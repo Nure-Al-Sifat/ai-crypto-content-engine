@@ -4,3 +4,6 @@ node_modules/
 !.env.example
 *.log
 card-preview.png
+data/
+*.xlsx
+.DS_Store

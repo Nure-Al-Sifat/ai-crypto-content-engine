@@ -7,10 +7,8 @@
  * vocabulary, and — just as importantly — what you never say.
  *
  * HOW TO USE:
- * 1. Paste 10-15 of your own best posts into SEED_EXAMPLES below.
- *    Real ones. Not idealized ones. The model copies what's here.
- * 2. Once the feedback loop has data, top-performing posts are pulled from
- *    Supabase automatically and merged in (see getVoiceExamples).
+ * Paste 10-15 of your own best posts into SEED_EXAMPLES below. Real ones, not
+ * idealized ones — the model copies exactly what's here.
  */
 
 // --- Hard style rules. These are constraints, not suggestions. ---

@@ -34,23 +34,37 @@ function scoreItem(item) {
   const text = `${item.title || ""}`.toLowerCase();
   let score = 0;
 
+  // Keyword relevance keeps the ranking on-brand (this is what stops a viral
+  // but off-topic post from winning).
   for (const [kw, weight] of Object.entries(KEYWORD_WEIGHTS)) {
     if (text.includes(kw)) score += weight;
   }
 
-  // Engagement signal, dampened so a viral irrelevant post can't dominate
-  if (item.upvotes) score += Math.min(Math.log10(item.upvotes + 1) * 2, 4);
-  if (item.engagement) score += Math.min(Math.log10(item.engagement + 1) * 2, 4);
+  const ageHours = item.publishedAt
+    ? (Date.now() - new Date(item.publishedAt).getTime()) / 3600_000
+    : null;
+  const validAge = ageHours != null && !Number.isNaN(ageHours);
 
-  // Recency decay — a 3-day-old story is rarely worth a post
-  if (item.publishedAt) {
-    const ageHours = (Date.now() - new Date(item.publishedAt).getTime()) / 3600_000;
-    if (!Number.isNaN(ageHours)) {
-      if (ageHours < 12) score += 3;
-      else if (ageHours < 24) score += 2;
-      else if (ageHours < 48) score += 0.5;
-      else score -= 2;
-    }
+  // Comments weigh double — a debate spreads harder than a quiet upvote.
+  const engagement =
+    (item.upvotes || 0) + (item.comments || 0) * 2 + (item.engagement || 0);
+
+  // VELOCITY is the core "trending right now" signal: engagement per hour, not
+  // raw totals. A post gaining 500 upvotes in 3h beats one that took 3 days.
+  if (engagement > 0 && validAge) {
+    const perHour = engagement / Math.max(ageHours, 2); // floor age so brand-new posts don't divide by ~0
+    score += Math.min(Math.log10(perHour + 1) * 3, 6);
+  } else if (engagement > 0) {
+    // No timestamp available: fall back to dampened raw engagement.
+    score += Math.min(Math.log10(engagement + 1) * 2, 4);
+  }
+
+  // Recency decay — a 3-day-old story is rarely worth a post.
+  if (validAge) {
+    if (ageHours < 12) score += 3;
+    else if (ageHours < 24) score += 2;
+    else if (ageHours < 48) score += 0.5;
+    else score -= 2;
   }
 
   return score;

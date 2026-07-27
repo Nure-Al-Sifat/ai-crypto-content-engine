@@ -64,6 +64,7 @@ export async function fetchHackerNewsTrends(limit = 10) {
           title: hit.title,
           link: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
           upvotes: hit.points,
+          comments: hit.num_comments,
           publishedAt: hit.created_at,
         });
       }

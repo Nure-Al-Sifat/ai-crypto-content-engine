@@ -43,12 +43,11 @@ jobs:
       - name: Generate today's content
         run: node index.js
         env:
-          # Ollama is dropped from the chain here — GitHub runners have no
-          # local Ollama server. Gemini and Groq both work from CI.
-          AI_PROVIDERS: gemini,groq
+          # Ollama is dropped here — GitHub runners have no local Ollama server.
+          AI_PROVIDERS: groq,gemini
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: gemini-2.0-flash
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
@@ -62,19 +61,16 @@ jobs:
           GITHUB_REPOS: ${{ vars.GITHUB_REPOS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # Storage: Railway Postgres. Add DATABASE_URL as a repo secret
-          # (use the PUBLIC connection string). See README "Storage".
-          STORAGE: postgres
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          # To use Supabase instead, set STORAGE=supabase and provide these two:
-          # SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          # SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
           CONTENT_FOCUS: "Web3 gaming, esports monetization, streamer micropayments, GameReq founder perspective"
-          X_HANDLE: ${{ vars.X_HANDLE }}
-          VARIANT_COUNT: "3"
           PILLAR_OVERRIDE: ${{ inputs.pillar }}
           FORCE_RERUN: ${{ inputs.force }}
+
+      # The Excel file lives on the ephemeral runner — upload it so you can
+      # download the day's topic + drafts from the run's Artifacts.
+      - name: Upload content workbook
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-engine-xlsx
+          path: data/content-engine.xlsx
+          if-no-files-found: ignore
