@@ -8,6 +8,7 @@
     "start": "node index.js",
     "force": "node index.js --force",
     "dry": "node scripts/dry-run.js",
+    "dna": "node scripts/viral-dna.js",
     "card": "node scripts/preview-card.js"
   },
   "dependencies": {

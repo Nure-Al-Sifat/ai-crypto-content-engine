@@ -43,6 +43,10 @@ const POSTS_COLS = [
 
 const TOPICS_COLS = ["id", "created_at", "topic", "topic_key"];
 
+// Viral DNA reports (from `npm run dna`) — one row per analysis run.
+const DNA_TAB = "viral_dna";
+const DNA_COLS = ["id", "created_at", "query", "video_count", "patterns", "recommendations", "stats"];
+
 // ---- helpers ---------------------------------------------------------------
 
 export function todayKey(date = new Date()) {
@@ -134,6 +138,25 @@ export async function recordTopic(title) {
   const id = nextId(readRows(topics, TOPICS_COLS));
   topics.addRow([id, new Date().toISOString(), String(title).slice(0, 300), makeTopicKey(title)]);
   await save(wb);
+}
+
+/** Saves a Viral DNA report to its own sheet; returns the row id. */
+export async function saveDNA({ query, stats, report }) {
+  const wb = new ExcelJS.Workbook();
+  if (existsSync(FILE())) await wb.xlsx.readFile(FILE());
+  const ws = ensureSheet(wb, DNA_TAB, DNA_COLS);
+  const id = nextId(readRows(ws, DNA_COLS));
+  ws.addRow([
+    id,
+    new Date().toISOString(),
+    query,
+    stats.count,
+    report.summary.map((s) => `• ${s}`).join("\n"),
+    report.recommendations.map((s) => `→ ${s}`).join("\n"),
+    JSON.stringify(stats),
+  ]);
+  await save(wb);
+  return id;
 }
 
 /** Saves the run as one clean row and returns its id. */
