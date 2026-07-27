@@ -1,4 +1,6 @@
 node_modules/
+.venv/
+__pycache__/
 .env
 .env.*
 !.env.example
@@ -7,3 +9,4 @@ card-preview.png
 data/
 *.xlsx
 .DS_Store
+models/
