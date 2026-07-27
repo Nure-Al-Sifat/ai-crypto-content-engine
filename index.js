@@ -1,7 +1,9 @@
 import "dotenv/config";
 import { getPillarForDate, getPillarByKey } from "./config/pillars.js";
 import { collectTrends } from "./fetchers/index.js";
+import { youtubeSignals } from "./fetchers/youtube.js";
 import { judgeVirality } from "./ai/viral.js";
+import { opportunityScore, signalsLine } from "./ai/opportunity.js";
 import { generateContent } from "./ai/generate.js";
 import {
   todayKey,
@@ -85,7 +87,7 @@ async function run() {
   // 3. Choose the topic.
   let topic;
   let related = [];
-  let viral = { score: null, why: "" };
+  let viral = { score: null, why: "", signals: "" };
 
   if (pillar.needs.length) {
     const trends = await collectTrends({ needs: pillar.needs });
@@ -94,15 +96,33 @@ async function run() {
       return;
     }
 
-    const ranked = await judgeVirality({ trends, focus, pillar, recentTopics });
-    topic = ranked[0];
-    related = findRelated(topic, trends, 3);
-    viral = { score: topic.viral_score, why: topic.why };
+    // AI judge shortlists; then the Opportunity Score (momentum, competition,
+    // confirmation, freshness, niche + the judge's read) picks the real winner.
+    const shortlist = await judgeVirality({ trends, focus, pillar, recentTopics });
+    await Promise.all(
+      shortlist.map(async (c) => {
+        c.youtube = await youtubeSignals(sig(c.title).slice(0, 6).join(" "));
+      })
+    );
+    const batchMaxNiche = Math.max(1, ...shortlist.map((c) => c._score || 0));
+    for (const c of shortlist) c.opportunity = opportunityScore(c, { batchMaxNiche });
+    shortlist.sort((a, b) => b.opportunity.score - a.opportunity.score);
 
-    console.log(`\n🔥 BEST TOPIC — ${topic.viral_score}/100: ${topic.title}`);
-    ranked
+    topic = shortlist[0];
+    related = findRelated(topic, trends, 3);
+    viral = {
+      score: topic.opportunity.score,
+      why: topic.why,
+      signals: signalsLine(topic.opportunity),
+    };
+
+    console.log(`\n🔥 BEST OPPORTUNITY — ${topic.opportunity.score}/100: ${topic.title}`);
+    console.log(`   ${viral.signals}`);
+    shortlist
       .slice(1, 3)
-      .forEach((r) => console.log(`   runner-up (${r.viral_score}/100): ${r.title.slice(0, 60)}`));
+      .forEach((r) =>
+        console.log(`   runner-up (${r.opportunity.score}/100): ${r.title.slice(0, 55)}`)
+      );
   } else {
     // Pillars like founder_story run on voice + context, no external trend.
     topic = {

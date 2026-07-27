@@ -89,8 +89,21 @@ function dedupeByTitle(items) {
 
     if (!normalized) continue;
     const existing = seen.get(normalized);
-    if (!existing || (item._score || 0) > (existing._score || 0)) {
+    if (!existing) {
+      // _sourceCount / _sources power the "multi-platform confirmation" signal:
+      // a story several outlets report at once is a stronger bet than one blog.
+      item._sourceCount = 1;
+      item._sources = [item.source];
       seen.set(normalized, item);
+    } else {
+      existing._sourceCount += 1;
+      if (!existing._sources.includes(item.source)) existing._sources.push(item.source);
+      // Keep the highest-scoring representative, but carry the merged count.
+      if ((item._score || 0) > (existing._score || 0)) {
+        item._sourceCount = existing._sourceCount;
+        item._sources = existing._sources;
+        seen.set(normalized, item);
+      }
     }
   }
 
