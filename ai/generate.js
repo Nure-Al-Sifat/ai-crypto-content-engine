@@ -27,7 +27,7 @@ export function xLength(text) {
  * platform. Research is skipped for pillars that run on voice alone (no link,
  * no related items).
  */
-export async function generateContent({ topic, pillar, focus, voiceExamples = [], related = [] }) {
+export async function generateContent({ topic, pillar, focus, voiceExamples = [], related = [], dna = null }) {
   let research = null;
   if (topic.link || related.length) {
     try {
@@ -43,6 +43,7 @@ export async function generateContent({ topic, pillar, focus, voiceExamples = []
     pillar,
     focus,
     voiceExamples,
+    dna,
   });
 
   // Enforce X's limit rather than trusting the model's self-report.

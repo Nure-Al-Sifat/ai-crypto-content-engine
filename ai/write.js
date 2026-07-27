@@ -9,7 +9,7 @@ import { buildVoiceBlock } from "../config/voice.js";
  * one ready-to-post draft PER PLATFORM, each shaped to how that platform
  * actually works — not the same text reposted four times.
  */
-export async function writePlatformContent({ topic, research, pillar, focus, voiceExamples = [] }) {
+export async function writePlatformContent({ topic, research, pillar, focus, voiceExamples = [], dna = null }) {
   const system = `You are ghostwriting for a Web3 gaming founder. You do not sound
 like an AI, a marketer, or a newsletter. You sound like this specific person.
 
@@ -53,7 +53,7 @@ Write one ready-to-post draft for EACH platform, tuned to that platform:
   than X, 2-4 short paragraphs.
 - hook: the single most arresting line (used as a summary).
 - hashtags: up to 6, lowercase, no # symbol.
-
+${dna?.recommendations ? `\nPROVEN PATTERNS from analyzing this niche's top YouTube videos — apply to the youtube_* fields where they fit:\n${dna.recommendations}\n` : ""}
 Return a FLAT JSON object exactly like this:
 {"hook":"...","x_post":"...","linkedin_post":"...","youtube_title":"...","youtube_hook":"...","youtube_outline":"- beat one\n- beat two","facebook_post":"...","hashtags":["..."]}`;
 

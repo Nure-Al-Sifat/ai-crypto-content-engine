@@ -159,6 +159,19 @@ export async function saveDNA({ query, stats, report }) {
   return id;
 }
 
+/** The most recent Viral DNA report, so the engine can follow proven patterns. */
+export async function getLatestDNA() {
+  if (!existsSync(FILE())) return null;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(FILE());
+  const ws = wb.getWorksheet(DNA_TAB);
+  if (!ws) return null;
+  const rows = readRows(ws, DNA_COLS);
+  if (!rows.length) return null;
+  const last = rows[rows.length - 1];
+  return { query: last.query, patterns: last.patterns, recommendations: last.recommendations };
+}
+
 /** Saves the run as one clean row and returns its id. */
 export async function savePost({ runDate, pillar, topic, sourceLink, viral, content }) {
   const { wb, posts } = await load();

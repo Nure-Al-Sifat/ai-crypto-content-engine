@@ -35,14 +35,14 @@ async function run() {
   console.log(`[dna] Deep-analyzing top ${DEEP_N} (download + scene + vision + audio)...`);
   const deepResults = [];
   for (const v of videos.slice(0, DEEP_N)) {
-    process.stdout.write(`  • ${v.title.slice(0, 45)} ... `);
-    const r = await deepAnalyze(v.videoId);
+    process.stdout.write(`  • ${v.title.slice(0, 42)} ... `);
+    const r = await deepAnalyze(v.videoId, v.thumbnail);
     console.log(
       r.error
         ? `skipped (${r.error.slice(0, 40)})`
         : `ok — ${r.scenes ?? "?"} scenes, ${
             r.talking_head_ratio != null ? Math.round(r.talking_head_ratio * 100) + "% face" : "?"
-          }, ${r.speech_wpm ?? "?"} wpm`
+          }, ${r.dominant_emotion ?? "?"}, ${(r.top_objects || []).slice(0, 2).join("/") || "?"}`
     );
     deepResults.push(r);
   }

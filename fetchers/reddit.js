@@ -40,6 +40,13 @@ async function getAccessToken() {
  * Pulls top "hot" posts from each configured subreddit.
  */
 export async function fetchRedditTrends(postsPerSub = 8) {
+  // Skip-safe: Reddit needs OAuth creds; without them, just contribute nothing
+  // rather than throwing (other sources still carry the run).
+  if (!process.env.REDDIT_CLIENT_ID || !process.env.REDDIT_CLIENT_SECRET) {
+    console.warn("[reddit] Skipped — REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET not set");
+    return [];
+  }
+
   const subs = (process.env.REDDIT_SUBREDDITS || "CryptoCurrency")
     .split(",")
     .map((s) => s.trim())

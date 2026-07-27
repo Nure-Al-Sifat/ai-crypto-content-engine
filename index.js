@@ -11,6 +11,7 @@ import {
   getRecentTopics,
   recordTopic,
   savePost,
+  getLatestDNA,
 } from "./db/excel.js";
 
 const args = process.argv.slice(2);
@@ -90,9 +91,15 @@ async function run() {
   let viral = { score: null, why: "", signals: "" };
 
   if (pillar.needs.length) {
-    const trends = await collectTrends({ needs: pillar.needs });
+    let trends = await collectTrends({ needs: pillar.needs });
+    // Fall back to news+market so a run never comes up empty — e.g. Build Log
+    // days when you have no recent commits (or GitHub is rate-limited).
+    if (!trends.length && !pillar.needs.includes("news")) {
+      console.log(`[engine] No ${pillar.label} items; falling back to news + market.`);
+      trends = await collectTrends({ needs: ["news", "market"] });
+    }
     if (!trends.length) {
-      console.log(`[engine] No usable items for ${pillar.label} after filtering. Nothing saved.`);
+      console.log(`[engine] No usable items after filtering. Nothing saved.`);
       return;
     }
 
@@ -134,8 +141,11 @@ async function run() {
     viral = { score: null, why: "No external trend — voice/context pillar" };
   }
 
-  // 4. Research + write per-platform drafts.
-  const { content } = await generateContent({ topic, pillar, focus, related });
+  // 4. Research + write per-platform drafts (YouTube draft follows the latest
+  //    Viral DNA patterns from `npm run dna:deep`, when available).
+  const dna = await getLatestDNA().catch(() => null);
+  if (dna) console.log(`[engine] Applying Viral DNA patterns (${dna.query})`);
+  const { content } = await generateContent({ topic, pillar, focus, related, dna });
 
   // 5. Save one clean row + remember the topic for dedupe.
   const { id } = await savePost({
