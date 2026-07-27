@@ -25,7 +25,14 @@ const KEYWORD_WEIGHTS = {
   onboarding: 3, wallet: 2, "account abstraction": 3, l2: 2, rollup: 2,
   gaming: 3, twitch: 3, youtube: 2, payout: 3, "creator economy": 4,
 
-  // Generic crypto — low weight, needs everything else to carry it
+  // General crypto / web3 — enough to count as on-niche (keeps real crypto
+  // news in, keeps totally off-topic tech/health/etc. out).
+  crypto: 2, blockchain: 2, web3: 3, ethereum: 2, ether: 1, defi: 2,
+  token: 1, tokenized: 3, tokenization: 3, nft: 2, onchain: 2, "on-chain": 2,
+  staking: 2, staked: 2, coinbase: 2, binance: 2, solana: 1, "smart contract": 2,
+  exchange: 1, sec: 1, "real-world asset": 3, rwa: 3, "layer 2": 2, dao: 2,
+
+  // Generic / low-signal — down-weighted so price spam can't win
   bitcoin: -1, etf: -1, "price prediction": -3, "to the moon": -5,
   airdrop: -2, presale: -4, "100x": -5, memecoin: -2,
 };
@@ -34,11 +41,17 @@ function scoreItem(item) {
   const text = `${item.title || ""}`.toLowerCase();
   let score = 0;
 
-  // Keyword relevance keeps the ranking on-brand (this is what stops a viral
-  // but off-topic post from winning).
+  // Keyword relevance keeps the ranking on-brand. `_niche` is tracked
+  // separately so we can DROP items with no niche match — otherwise a recent,
+  // popular but totally off-topic post (weather, gas stoves) sneaks in.
+  // Word-boundary match so "sec" doesn't hit "security", "base" not "based".
+  let niche = 0;
   for (const [kw, weight] of Object.entries(KEYWORD_WEIGHTS)) {
-    if (text.includes(kw)) score += weight;
+    const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?:^|[^a-z0-9])${esc}(?:[^a-z0-9]|$)`).test(text)) niche += weight;
   }
+  item._niche = niche;
+  score += niche;
 
   const ageHours = item.publishedAt
     ? (Date.now() - new Date(item.publishedAt).getTime()) / 3600_000
@@ -115,48 +128,68 @@ function dedupeByTitle(items) {
  * and returns the top N.
  */
 export async function collectTrends({ needs = ["news", "market", "social"], limit = 25 } = {}) {
-  const tasks = [];
   const soft = (p, label) =>
     p.catch((e) => {
       console.warn(`[fetch] ${label} failed: ${e.message}`);
       return [];
     });
 
-  if (needs.includes("news")) {
-    tasks.push(soft(fetchRssTrends(), "rss"));
-    tasks.push(soft(fetchHackerNewsTrends(), "hackernews"));
-    tasks.push(soft(fetchYouTubeTrends(), "youtube"));
-  }
-  if (needs.includes("market")) {
-    tasks.push(soft(fetchCoinGeckoTrends(), "coingecko"));
-  }
-  if (needs.includes("social")) {
-    tasks.push(soft(fetchRedditTrends(), "reddit"));
-    tasks.push(soft(fetchFarcasterTrends(), "farcaster"));
-  }
-  if (needs.includes("commits")) {
-    tasks.push(soft(fetchRecentCommits(), "github"));
-  }
+  // Build labelled jobs so we can log exactly how many items each source gave.
+  const jobs = [];
+  const add = (cond, fn, label) => {
+    if (cond) jobs.push({ label, p: soft(fn(), label) });
+  };
+  add(needs.includes("news"), fetchRssTrends, "rss");
+  add(needs.includes("news"), fetchHackerNewsTrends, "hackernews");
+  add(needs.includes("news"), fetchYouTubeTrends, "youtube");
+  add(needs.includes("market"), fetchCoinGeckoTrends, "coingecko");
+  add(needs.includes("social"), fetchRedditTrends, "reddit");
+  add(needs.includes("social"), fetchFarcasterTrends, "farcaster");
+  add(needs.includes("commits"), fetchRecentCommits, "github");
 
-  const settled = await Promise.all(tasks);
-  const all = settled.flat();
+  const results = await Promise.all(jobs.map((j) => j.p));
+  console.log(
+    `[fetch] sources → ${jobs.map((j, i) => `${j.label}:${results[i].length}`).join("  ")}`
+  );
 
-  // Commits bypass scoring — every one of them is on-topic by definition
-  const commits = all.filter((i) => i.type === "commit");
+  const all = results.flat();
+  const commits = all.filter((i) => i.type === "commit"); // bypass scoring — on-topic by definition
   const rest = all.filter((i) => i.type !== "commit");
-
   for (const item of rest) item._score = scoreItem(item);
 
   const ranked = dedupeByTitle(rest)
-    .filter((i) => i._score > 0)
+    // Must be on-niche (positive keyword match) AND net-positive overall.
+    .filter((i) => i._niche > 0 && i._score > 0)
     .sort((a, b) => b._score - a._score)
     .slice(0, limit);
 
   console.log(
-    `[fetch] ${all.length} raw -> ${ranked.length} ranked (+${commits.length} commits)`
+    `[fetch] ${all.length} raw → ${ranked.length} ranked by keyword+momentum (+${commits.length} commits)`
   );
 
   return [...commits, ...ranked];
+}
+
+/** A readable table of ranked topics with their engagement — "what's trending & how much". */
+export function formatTrendTable(items, n = 25) {
+  const head =
+    "   #  score  source        engagement        age   title";
+  const rows = items.slice(0, n).map((t, i) => {
+    const age = t.publishedAt
+      ? Math.round((Date.now() - new Date(t.publishedAt).getTime()) / 3600_000) + "h"
+      : "—";
+    const eng =
+      [t.upvotes ? `↑${t.upvotes}` : null, t.comments ? `💬${t.comments}` : null]
+        .filter(Boolean)
+        .join(" ") || "—";
+    const score = (t._score ?? 0).toFixed(1);
+    return (
+      `  ${String(i + 1).padStart(2)}  ${score.padStart(5)}  ` +
+      `${String(t.source || "").padEnd(12).slice(0, 12)}  ${eng.padEnd(16).slice(0, 16)}  ` +
+      `${age.padStart(4)}  ${String(t.title || "").slice(0, 58)}`
+    );
+  });
+  return [head, ...rows].join("\n");
 }
 
 export { scoreItem, dedupeByTitle };

@@ -8,6 +8,7 @@
     "start": "node index.js",
     "force": "node index.js --force",
     "dry": "node scripts/dry-run.js",
+    "trends": "node scripts/trends.js",
     "dna": "node scripts/viral-dna.js",
     "dna:deep": "node scripts/viral-dna-deep.js",
     "card": "node scripts/preview-card.js"
