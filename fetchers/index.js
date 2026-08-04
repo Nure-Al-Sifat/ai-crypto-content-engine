@@ -4,6 +4,8 @@ import { fetchCoinGeckoTrends } from "./coingecko.js";
 import { fetchFarcasterTrends } from "./farcaster.js";
 import { fetchYouTubeTrends, fetchHackerNewsTrends } from "./misc.js";
 import { fetchRecentCommits } from "./github.js";
+import { fetchGoogleNews } from "./googlenews.js";
+import { fetchYouTubeSearch } from "./youtube-search.js";
 
 /**
  * PRE-FILTER SCORING
@@ -68,9 +70,11 @@ function scoreItem(item) {
     : null;
   const validAge = ageHours != null && !Number.isNaN(ageHours);
 
-  // Comments weigh double — a debate spreads harder than a quiet upvote.
+  // Real engagement from whatever the source provides: Reddit/HN upvotes,
+  // comments (weighted double — a debate spreads harder), and YouTube views.
+  // Velocity below is log-scaled + capped, so the differing magnitudes are fine.
   const engagement =
-    (item.upvotes || 0) + (item.comments || 0) * 2 + (item.engagement || 0);
+    (item.upvotes || 0) + (item.comments || 0) * 2 + (item.views || 0) + (item.engagement || 0);
 
   // VELOCITY is the core "trending right now" signal: engagement per hour, not
   // raw totals. A post gaining 500 upvotes in 3h beats one that took 3 days.
@@ -82,12 +86,19 @@ function scoreItem(item) {
     score += Math.min(Math.log10(engagement + 1) * 2, 4);
   }
 
-  // Recency decay — a 3-day-old story is rarely worth a post.
+  // Recency decay — "trending" means NOW. Steep penalty for old items so
+  // evergreen "What is GameFi?" articles (which Google News also returns) sink
+  // below genuinely fresh news. `_ageHours` is stored so stale items can be
+  // dropped entirely in collectTrends.
+  item._ageHours = validAge ? ageHours : null;
   if (validAge) {
     if (ageHours < 12) score += 3;
     else if (ageHours < 24) score += 2;
     else if (ageHours < 48) score += 0.5;
-    else score -= 2;
+    else if (ageHours < 72) score -= 1;
+    else if (ageHours < 168) score -= 3; // 3-7 days
+    else if (ageHours < 336) score -= 6; // 1-2 weeks
+    else score -= 12; // older — basically evergreen, push it out
   }
 
   return score;
@@ -149,6 +160,8 @@ export async function collectTrends({ needs = ["news", "market", "social"], limi
   const add = (cond, fn, label) => {
     if (cond) jobs.push({ label, p: soft(fn(), label) });
   };
+  add(needs.includes("news"), fetchGoogleNews, "googlenews");
+  add(needs.includes("news"), fetchYouTubeSearch, "youtube_search");
   add(needs.includes("news"), fetchRssTrends, "rss");
   add(needs.includes("news"), fetchHackerNewsTrends, "hackernews");
   add(needs.includes("news"), fetchYouTubeTrends, "youtube");
@@ -168,8 +181,9 @@ export async function collectTrends({ needs = ["news", "market", "social"], limi
   for (const item of rest) item._score = scoreItem(item);
 
   const ranked = dedupeByTitle(rest)
-    // Must hit a CORE Web3-gaming keyword — no genuine gaming angle, no post.
-    .filter((i) => i._core > 0 && i._score > 0)
+    // Must hit a CORE Web3-gaming keyword, be net-positive, and not be stale
+    // (drop anything with a known age older than ~3 weeks — it isn't trending).
+    .filter((i) => i._core > 0 && i._score > 0 && !(i._ageHours != null && i._ageHours > 504))
     .sort((a, b) => b._score - a._score)
     .slice(0, limit);
 
