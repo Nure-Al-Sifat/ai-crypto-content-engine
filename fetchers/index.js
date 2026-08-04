@@ -14,44 +14,54 @@ import { fetchRecentCommits } from "./github.js";
  * Weights are deliberately domain-specific. Tune them — this is the knob that
  * decides whether your engine talks about Web3 gaming or about Bitcoin price.
  */
-const KEYWORD_WEIGHTS = {
-  // Core domain — highest signal
-  esports: 5, streamer: 5, "state channel": 5, micropayment: 5,
-  "creator monetization": 5, "in-game": 4, tipping: 4, "erc-7824": 6,
-  yellow: 4, "web3 gaming": 5, "game developer": 4, tournament: 4,
+// CORE Web3-gaming terms. A topic MUST hit at least one of these to qualify —
+// this is what stops general crypto news (Lido, POSCO, ETF flows) from getting
+// a fabricated "for gamers" angle. If nothing here matches, the item is dropped.
+const CORE_GAMING = {
+  "web3 gaming": 6, "web3 game": 6, gamefi: 6, "game-fi": 6,
+  "play to earn": 6, "play-to-earn": 6, p2e: 6,
+  "blockchain gaming": 6, "blockchain game": 6, "onchain game": 5, "on-chain game": 5,
+  "nft game": 5, "nft gaming": 5, "gaming nft": 5, "in-game nft": 5,
+  esports: 5, "gaming guild": 5, "yield guild": 5,
+  "gaming token": 5, "in-game economy": 5, "in-game asset": 4, "in-game": 4,
+  "game studio": 4, "gaming studio": 4, "game developer": 4,
+  streamer: 5, "creator monetization": 5, micropayment: 5, "state channel": 5,
+  "erc-7824": 6, tipping: 4, tournament: 4,
+  // specific Web3 games / gaming chains (phrases, to avoid false positives)
+  "axie infinity": 6, illuvium: 6, "gods unchained": 6, "gala games": 5,
+  "immutable x": 6, "ronin network": 6, "star atlas": 6, "yellow network": 5,
+  "pixels game": 5, gamereq: 6,
+};
 
-  // Adjacent — relevant with a good angle
-  base: 2, polygon: 2, "bnb chain": 2, stablecoin: 3, "gas fee": 3,
-  onboarding: 3, wallet: 2, "account abstraction": 3, l2: 2, rollup: 2,
-  gaming: 3, twitch: 3, youtube: 2, payout: 3, "creator economy": 4,
+// CONTEXT — adjusts the score but is NOT enough on its own to qualify.
+const CONTEXT = {
+  gaming: 2, game: 1, nft: 1, metaverse: 2, twitch: 3, "creator economy": 3,
+  web3: 1, crypto: 1, blockchain: 1, base: 1, polygon: 1, ronin: 2, wallet: 1,
+  onboarding: 2, "gas fee": 2, stablecoin: 1, payout: 2,
+  bitcoin: -1, etf: -2, "price prediction": -3, presale: -4, "to the moon": -5,
+  "100x": -5, memecoin: -2,
+};
 
-  // General crypto / web3 — enough to count as on-niche (keeps real crypto
-  // news in, keeps totally off-topic tech/health/etc. out).
-  crypto: 2, blockchain: 2, web3: 3, ethereum: 2, ether: 1, defi: 2,
-  token: 1, tokenized: 3, tokenization: 3, nft: 2, onchain: 2, "on-chain": 2,
-  staking: 2, staked: 2, coinbase: 2, binance: 2, solana: 1, "smart contract": 2,
-  exchange: 1, sec: 1, "real-world asset": 3, rwa: 3, "layer 2": 2, dao: 2,
-
-  // Generic / low-signal — down-weighted so price spam can't win
-  bitcoin: -1, etf: -1, "price prediction": -3, "to the moon": -5,
-  airdrop: -2, presale: -4, "100x": -5, memecoin: -2,
+const matchScore = (text, map) => {
+  let s = 0;
+  for (const [kw, w] of Object.entries(map)) {
+    const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?:^|[^a-z0-9])${esc}(?:[^a-z0-9]|$)`).test(text)) s += w;
+  }
+  return s;
 };
 
 function scoreItem(item) {
   const text = `${item.title || ""}`.toLowerCase();
   let score = 0;
 
-  // Keyword relevance keeps the ranking on-brand. `_niche` is tracked
-  // separately so we can DROP items with no niche match — otherwise a recent,
-  // popular but totally off-topic post (weather, gas stoves) sneaks in.
-  // Word-boundary match so "sec" doesn't hit "security", "base" not "based".
-  let niche = 0;
-  for (const [kw, weight] of Object.entries(KEYWORD_WEIGHTS)) {
-    const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`(?:^|[^a-z0-9])${esc}(?:[^a-z0-9]|$)`).test(text)) niche += weight;
-  }
-  item._niche = niche;
-  score += niche;
+  // `_core` = genuine Web3-gaming relevance; items with none are dropped later,
+  // so the engine never fakes a gaming angle on unrelated crypto news.
+  const core = matchScore(text, CORE_GAMING);
+  const ctx = matchScore(text, CONTEXT);
+  item._core = core;
+  item._niche = core + ctx;
+  score += core + ctx;
 
   const ageHours = item.publishedAt
     ? (Date.now() - new Date(item.publishedAt).getTime()) / 3600_000
@@ -158,13 +168,15 @@ export async function collectTrends({ needs = ["news", "market", "social"], limi
   for (const item of rest) item._score = scoreItem(item);
 
   const ranked = dedupeByTitle(rest)
-    // Must be on-niche (positive keyword match) AND net-positive overall.
-    .filter((i) => i._niche > 0 && i._score > 0)
+    // Must hit a CORE Web3-gaming keyword — no genuine gaming angle, no post.
+    .filter((i) => i._core > 0 && i._score > 0)
     .sort((a, b) => b._score - a._score)
     .slice(0, limit);
 
+  const dropped = rest.filter((i) => (i._core || 0) <= 0).length;
   console.log(
-    `[fetch] ${all.length} raw → ${ranked.length} ranked by keyword+momentum (+${commits.length} commits)`
+    `[fetch] ${all.length} raw → ${ranked.length} genuine Web3-gaming topics ` +
+      `(${dropped} dropped as not gaming-relevant, +${commits.length} commits)`
   );
 
   return [...commits, ...ranked];
