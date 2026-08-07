@@ -1,6 +1,6 @@
 import { fetchRssTrends } from "./rss.js";
 import { fetchRedditTrends } from "./reddit.js";
-import { fetchCoinGeckoTrends } from "./coingecko.js";
+import { fetchCoinGeckoTrends, fetchGamingCoins } from "./coingecko.js";
 import { fetchFarcasterTrends } from "./farcaster.js";
 import { fetchYouTubeTrends, fetchHackerNewsTrends } from "./misc.js";
 import { fetchRecentCommits } from "./github.js";
@@ -166,6 +166,12 @@ export async function collectTrends({ needs = ["news", "market", "social"], limi
   add(needs.includes("news"), fetchHackerNewsTrends, "hackernews");
   add(needs.includes("news"), fetchYouTubeTrends, "youtube");
   add(needs.includes("market"), fetchCoinGeckoTrends, "coingecko");
+  // Only surface gaming tokens that moved meaningfully (>=12% in 24h) as topics.
+  add(
+    needs.includes("market"),
+    () => fetchGamingCoins().then((cs) => cs.filter((c) => Math.abs(c.priceChange) >= 12)),
+    "gaming_coins"
+  );
   add(needs.includes("social"), fetchRedditTrends, "reddit");
   add(needs.includes("social"), fetchFarcasterTrends, "farcaster");
   add(needs.includes("commits"), fetchRecentCommits, "github");
