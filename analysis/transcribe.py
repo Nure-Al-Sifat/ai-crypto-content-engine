@@ -95,7 +95,14 @@ def whisper_full(url, wd):
     wav16 = os.path.join(wd, "a16.wav")
     run(["ffmpeg", "-y", "-i", wavs[0], "-ac", "1", "-ar", "16000", wav16])
     prefix = os.path.join(wd, "out")
-    run(["whisper-cli", "-m", model, "-f", wav16, "-otxt", "-of", prefix, "-nt"])
+    cmd = ["whisper-cli", "-m", model, "-f", wav16, "-otxt", "-of", prefix, "-nt"]
+    if model == MODEL_ML:
+        cmd += ["-l", "auto"]  # multilingual: auto-detect the spoken language
+        # Set WHISPER_TRANSLATE=true to get an English translation instead of
+        # the original-language transcript.
+        if os.environ.get("WHISPER_TRANSLATE", "").lower() in ("1", "true", "yes"):
+            cmd += ["--translate"]
+    run(cmd)
     txt = prefix + ".txt"
     if os.path.exists(txt):
         with open(txt, encoding="utf-8") as f:
