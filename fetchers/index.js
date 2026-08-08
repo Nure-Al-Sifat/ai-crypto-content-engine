@@ -53,6 +53,11 @@ const matchScore = (text, map) => {
   return s;
 };
 
+// Utility/price pages that match a game name but aren't news (e.g. Bybit's
+// "Convert 1 AXS to ARS" currency-converter pages, price-prediction spam).
+const JUNK_RE =
+  /\bconvert\s+[\d.]|\bto\s+(usd|eur|inr|ars|mkd|isk|gbp|jpy|denar|krona|kr[oó]na|dollar|rupee|peso)\b|exchange rate|price prediction|price today|\bforecast\b/i;
+
 function scoreItem(item) {
   const text = `${item.title || ""}`.toLowerCase();
   let score = 0;
@@ -189,7 +194,13 @@ export async function collectTrends({ needs = ["news", "market", "social"], limi
   const ranked = dedupeByTitle(rest)
     // Must hit a CORE Web3-gaming keyword, be net-positive, and not be stale
     // (drop anything with a known age older than ~3 weeks — it isn't trending).
-    .filter((i) => i._core > 0 && i._score > 0 && !(i._ageHours != null && i._ageHours > 504))
+    .filter(
+      (i) =>
+        i._core > 0 &&
+        i._score > 0 &&
+        !(i._ageHours != null && i._ageHours > 504) &&
+        !JUNK_RE.test(i.title || "")
+    )
     .sort((a, b) => b._score - a._score)
     .slice(0, limit);
 
