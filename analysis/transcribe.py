@@ -20,10 +20,23 @@ import tempfile
 import subprocess
 import shutil
 
-# English model. For NON-English videos with no captions, download the
-# MULTILINGUAL model (ggml-base.bin) and point MODEL at it.
-MODEL_EN = os.path.join(os.path.dirname(__file__), "..", "models", "ggml-base.en.bin")
-MODEL_ML = os.path.join(os.path.dirname(__file__), "..", "models", "ggml-base.bin")
+_MD = os.path.join(os.path.dirname(__file__), "..", "models")
+MODEL_EN = os.path.join(_MD, "ggml-base.en.bin")
+
+# Multilingual models, most-accurate first — whisper_full auto-picks the best
+# one present, so dropping a bigger model in models/ instantly upgrades accuracy.
+_ML_PREFERENCE = [
+    "ggml-large-v3-turbo.bin", "ggml-large-v3.bin", "ggml-large-v2.bin",
+    "ggml-medium.bin", "ggml-small.bin", "ggml-base.bin",
+]
+
+
+def best_ml_model():
+    for name in _ML_PREFERENCE:
+        p = os.path.join(_MD, name)
+        if os.path.exists(p):
+            return p
+    return None
 
 
 def run(cmd):
@@ -81,7 +94,7 @@ def full_captions(url, wd, retries=4):
 
 def whisper_full(url, wd):
     """Download full audio and transcribe with whisper.cpp (slow on CPU)."""
-    model = MODEL_ML if os.path.exists(MODEL_ML) else MODEL_EN
+    model = best_ml_model() or MODEL_EN
     if not os.path.exists(model) or not shutil.which("whisper-cli"):
         return ""
     run([
@@ -96,7 +109,7 @@ def whisper_full(url, wd):
     run(["ffmpeg", "-y", "-i", wavs[0], "-ac", "1", "-ar", "16000", wav16])
     prefix = os.path.join(wd, "out")
     cmd = ["whisper-cli", "-m", model, "-f", wav16, "-otxt", "-of", prefix, "-nt"]
-    if model == MODEL_ML:
+    if model != MODEL_EN:
         cmd += ["-l", "auto"]  # multilingual: auto-detect the spoken language
         # Set WHISPER_TRANSLATE=true to get an English translation instead of
         # the original-language transcript.
